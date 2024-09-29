@@ -389,12 +389,11 @@ void cache_basic() {
 	cache::Mesh = d.read<uint64_t>(cache::playerPawn + 0x288);
 	cache::player_camera_manager = d.read<uint64_t>(cache::PlayerController + 0x2C0);
 	//printf("mesh %p\n", Mesh);
-	cache::Actors = d.readv<TArray>(cache::PersistentLevel + 0x98);
-	cache::Actors2 = d.readv<uint64_t>(cache::PersistentLevel + 0x98);
+	
 
 
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(30));
+	std::this_thread::sleep_for(std::chrono::milliseconds(300));
 }
 auto DrawLine(const ImVec2& aPoint1, const ImVec2 aPoint2, ImU32 aColor, const FLOAT aLineWidth) -> VOID
 {
@@ -490,7 +489,8 @@ void DrawPlayerBones(uint64_t actorMesh, Vector3 headPos, Vector3 bonePos)
 static PrefixFilter filter = { {"BP_Soldier"} };
 void esp() {
 
-
+	cache::Actors = d.readv<TArray>(cache::PersistentLevel + 0x98);
+	cache::Actors2 = d.readv<uint64_t>(cache::PersistentLevel + 0x98);	
 
 	for (int i = 0; i < cache::Actors.Size(); i++) {
 		auto CurrentActor = cache::Actors[i];
@@ -632,6 +632,7 @@ WPARAM render_loop() {
 		ImGui::NewFrame();
 
 		esp(); // Call ESP function to draw player info and bones
+		cache_basic();
 		render_menu(); // Call menu rendering function
 
 		// End ImGui frame
@@ -743,7 +744,7 @@ void create_overlay()
 int main() {
 	// hide_imports;
 	driver_start();
-	cache_basic();
+	
 	if (!gui::init())
 	{
 		printf("The gui was not initialized!");
