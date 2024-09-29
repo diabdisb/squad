@@ -150,6 +150,7 @@
     <ClInclude Include="include\imstb_rectpack.h" />
     <ClInclude Include="include\imstb_textedit.h" />
     <ClInclude Include="include\imstb_truetype.h" />
+    <ClInclude Include="lazyimporter.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="skcrypt.hpp" />
     <ClInclude Include="spoofer.hpp" />
