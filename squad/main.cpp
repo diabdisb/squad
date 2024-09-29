@@ -511,7 +511,7 @@ void esp() {
 
 			auto bone_pos = GetBoneWithRotation(actorMesh, 0);
 
-			auto actor_health = d.readv<float>(CurrentActor + 0x1df8);
+			auto actor_health = d.readv<float>(actorPawn + 0x1df8);
 			printf("actor_health %.3f" , actor_health);
 			
 
@@ -523,9 +523,9 @@ void esp() {
 				continue;
 			}
 			
-		//	if (actor_health <= 0.0f) {
-		//		continue;
-		//	}
+			if (actor_health <= 0.0f) {
+				continue;
+			}
 			
 			if (WorldToScreenX(actorWorldPos, CameraCache.POV, Screen)) {
 				ImU32 color = IM_COL32(0, 255, 0, 255); // Green color
