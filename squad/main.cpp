@@ -128,7 +128,8 @@ std::string FNameToString(FName& fname)
 }
 
 void driver_start() {
-	d._processid = d.getprocessid(L"SquadGame.exe");
+	SPOOF_FUNC
+	d._processid = d.getprocessid(_(L"SquadGame.exe"));
 	d.initdriver(d._processid);
 	d.BaseAddress = d.get_base_address();
 	printf("baseAddress %p\n", d.BaseAddress);
@@ -376,9 +377,9 @@ Vector3 GetBoneWithRotation(DWORD_PTR mesh, int id)
 
 
 void cache_basic() {
-
+	SPOOF_FUNC
 	cache::gworld = d.read<uint64_t>(d.BaseAddress + OFFSET_GWORLD);
-	cache::PersistentLevel = d.read<uint64_t>(cache::gworld + 0x30); //0xd8
+	cache::PersistentLevel = d.read<uint64_t>(cache::gworld + 0x30); 
 	cache::owninggameinstance = d.read<uint64_t>(cache::gworld + 0x180);
 	cache::LocalPlayers = d.readv<TArray>(cache::owninggameinstance + 0x38);
 	cache::localplayer = d.read<uint64_t>(cache::LocalPlayers.GetAddress());
@@ -388,7 +389,6 @@ void cache_basic() {
 	cache::localteamid = d.readv<int32_t>(cache::Playerstate + 0x400);
 	cache::Mesh = d.read<uint64_t>(cache::playerPawn + 0x288);
 	cache::player_camera_manager = d.read<uint64_t>(cache::PlayerController + 0x2C0);
-	//printf("mesh %p\n", Mesh);
 	
 
 
@@ -397,11 +397,12 @@ void cache_basic() {
 }
 auto DrawLine(const ImVec2& aPoint1, const ImVec2 aPoint2, ImU32 aColor, const FLOAT aLineWidth) -> VOID
 {
-	
+	SPOOF_FUNC
 	ImGui::GetForegroundDrawList()->AddLine(aPoint1, aPoint2, aColor, aLineWidth);
 }
 auto DrawBox(float x, float y, float w, float h, ImColor color) -> VOID
 {
+	SPOOF_FUNC
 	DrawLine(ImVec2(x, y), ImVec2(x + w, y), color, 1.3f); // top 
 	DrawLine(ImVec2(x, y - 1.3f), ImVec2(x, y + h + 1.4f), color, 1.3f); // left
 	DrawLine(ImVec2(x + w, y - 1.3f), ImVec2(x + w, y + h + 1.4f), color, 1.3f);  // right
@@ -410,6 +411,7 @@ auto DrawBox(float x, float y, float w, float h, ImColor color) -> VOID
 ImFont* Verdana, * DefaultFont;
 auto DrawOutlinedText(ImFont* pFont, const std::string& text, const ImVec2& pos, float size, ImU32 color, bool center) -> VOID
 {
+	SPOOF_FUNC
 	ImGui::PushFont(Verdana);
 	std::stringstream stream(text);
 	std::string line;
@@ -442,17 +444,18 @@ auto DrawOutlinedText(ImFont* pFont, const std::string& text, const ImVec2& pos,
 
 void RenderPlayerInfo(Vector3 screenPosition, int distance, ImU32 color) {
 	// Render is dead status based on checkbox
-	
+	SPOOF_FUNC
 
 	// Render distance based on checkbox
 	if (displayDistance) {
-		std::string distanceText = "Distance: [" + std::to_string(distance) + "]";
+		std::string distanceText = _("Distance: [") + std::to_string(distance) + _("]");
 		ImGui::GetForegroundDrawList()->AddText(ImVec2(screenPosition.x, screenPosition.y + 5), color, distanceText.c_str());
 	}
 }
 
 void DrawPlayerBones(uint64_t actorMesh, Vector3 headPos, Vector3 bonePos)
 {
+	SPOOF_FUNC
 	Vector3 vHeadBone = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::head));
 	Vector3 vHip = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::pelvis));
 	Vector3 vNeck = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::neck_01));
@@ -470,7 +473,7 @@ void DrawPlayerBones(uint64_t actorMesh, Vector3 headPos, Vector3 bonePos)
 	Vector3 vLeftHandMiddle = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::ik_hand_l));
 	Vector3 vRightHandMiddle = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::ik_hand_r));
 
-	// Draw bones
+	
 	DrawLine(ImVec2(vHeadBone.x, vHeadBone.y), ImVec2(vNeck.x, vNeck.y), ImColor(255, 255, 255), 2);
 	DrawLine(ImVec2(vHip.x, vHip.y), ImVec2(vNeck.x, vNeck.y), ImColor(255, 255, 255), 2);
 	DrawLine(ImVec2(vUpperArmLeft.x, vUpperArmLeft.y), ImVec2(vNeck.x, vNeck.y), ImColor(255, 255, 255), 2);
@@ -486,9 +489,9 @@ void DrawPlayerBones(uint64_t actorMesh, Vector3 headPos, Vector3 bonePos)
 	DrawLine(ImVec2(vLeftHandMiddle.x, vLeftHandMiddle.y), ImVec2(vUpperArmLeft.x, vUpperArmLeft.y), ImColor(255, 255, 255), 2);
 	DrawLine(ImVec2(vRightHandMiddle.x, vRightHandMiddle.y), ImVec2(vUpperArmRight.x, vUpperArmRight.y), ImColor(255, 255, 255), 2);
 }
-static PrefixFilter filter = { {"BP_Soldier"} };
+static PrefixFilter filter = { {_("BP_Soldier")} };
 void esp() {
-
+	SPOOF_FUNC
 	cache::Actors = d.readv<TArray>(cache::PersistentLevel + 0x98);
 	cache::Actors2 = d.readv<uint64_t>(cache::PersistentLevel + 0x98);	
 
@@ -512,7 +515,7 @@ void esp() {
 			auto bone_pos = GetBoneWithRotation(actorMesh, 0);
 
 			auto actor_health = d.readv<float>(actorPawn + 0x1df8);
-			printf("actor_health %.3f" , actor_health);
+			//printf("actor_health %.3f" , actor_health);
 			
 
 			auto actorRootComponent = d.read<uint64_t>(CurrentActor + 0x138);
@@ -557,7 +560,7 @@ void esp() {
 
 void render_menu()
 {
-	
+	SPOOF_FUNC
 	if (GetAsyncKeyState(VK_INSERT) & 1) {
 		menuopen = !menuopen;
 
@@ -573,8 +576,8 @@ void render_menu()
 
 	if (menuopen) {
 		ImGui::SetNextWindowSize({ 620, 350 });
-		ImGui::Begin("Squad", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
-		ImGui::Text("Hello, World!");
+		ImGui::Begin(_("Squad"), nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
+		ImGui::Text(_("Hello, World!"));
 		ImGui::Checkbox("Enable Filter", &filterEnabled);
 		ImGui::Checkbox("Show Is Dead", &displayIsDead);
 		ImGui::Checkbox("Show Distance", &displayDistance); 
@@ -592,8 +595,9 @@ void render_menu()
 
 
 WPARAM render_loop() {
+	SPOOF_FUNC
 	ZeroMemory(&messager, sizeof(MSG));
-	std::cout << "Starting render loop..." << std::endl;
+	std::cout << _("Starting render loop...") << std::endl;
 
 	while (messager.message != WM_QUIT) {
 		// Process messages
@@ -654,10 +658,10 @@ WPARAM render_loop() {
 		// Present the rendered frame
 		HRESULT result = p_device->Present(0, 0, 0, 0);
 		if (result == D3DERR_DEVICELOST && p_device->TestCooperativeLevel() == D3DERR_DEVICENOTRESET) {
-			std::cerr << "Device lost, resetting..." << std::endl;
+			std::cerr << _("Device lost, resetting...") << std::endl;
 			ImGui_ImplDX9_InvalidateDeviceObjects();
 			if (FAILED(p_device->Reset(&p_params))) {
-				std::cerr << "Failed to reset Direct3D device after loss." << std::endl;
+				std::cerr << _("Failed to reset Direct3D device after loss.") << std::endl;
 				continue; // Skip rendering this frame
 			}
 			ImGui_ImplDX9_CreateDeviceObjects();
@@ -677,13 +681,14 @@ WPARAM render_loop() {
 	if (p_object != nullptr) p_object->Release();
 	DestroyWindow(my_wnd);
 
-	std::cout << "Render loop ended." << std::endl;
+	std::cout << _("Render loop ended.") << std::endl;
 	return messager.wParam;
 }
 void create_overlay()
 {
+	SPOOF_FUNC
 	// Debug logging
-	std::cout << "Creating overlay window..." << std::endl;
+	std::cout << _("Creating overlay window...") << std::endl;
 
 	WNDCLASSEXA wcex = {
 		sizeof(WNDCLASSEXA),
@@ -696,7 +701,7 @@ void create_overlay()
 		LoadCursor(0, IDC_ARROW),
 		0,
 		0,
-		"Medal",
+		_("Medal"),
 		LoadIcon(0, IDI_APPLICATION)
 	};
 
@@ -704,25 +709,25 @@ void create_overlay()
 	ATOM rce = RegisterClassExA(&wcex);
 	if (!rce)
 	{
-		std::cerr << "Error registering window class: " << GetLastError() << std::endl;
+		std::cerr << _("Error registering window class: ") << GetLastError() << std::endl;
 		return; // Exit if registration fails
 	}
-	std::cout << "Window class registered successfully." << std::endl;
+	std::cout << _("Window class registered successfully.") << std::endl;
 
 	RECT rect;
 	GetWindowRect(GetDesktopWindow(), &rect);
 
 	// Create the overlay window
-	my_wnd = gui::create_window_in_band(0, rce, L"Medal", WS_POPUP,
+	my_wnd = gui::create_window_in_band(0, rce, _(L"Medal"), WS_POPUP,
 		rect.left, rect.top, rect.right, rect.bottom,
 		0, 0, wcex.hInstance, 0, gui::ZBID_UIACCESS);
 
 	if (!my_wnd)
 	{
-		std::cerr << "Error creating overlay window: " << GetLastError() << std::endl;
+		std::cerr << _("Error creating overlay window: ") << GetLastError() << std::endl;
 		return; // Exit if window creation fails
 	}
-	std::cout << "Overlay window created successfully." << std::endl;
+	std::cout << _("Overlay window created successfully.") << std::endl;
 
 	// Set window styles
 	
@@ -732,22 +737,23 @@ void create_overlay()
 	HRESULT hr = DwmExtendFrameIntoClientArea(my_wnd, &margin);
 	if (FAILED(hr))
 	{
-		std::cerr << "Error extending frame into client area: " << std::hex << hr << std::endl;
+		std::cerr << _("Error extending frame into client area: ") << std::hex << hr << std::endl;
 		return; // Exit if DWM extension fails
 	}
-	std::cout << "Frame extended into client area successfully." << std::endl;
+	std::cout << _("Frame extended into client area successfully.") << std::endl;
 
 	ShowWindow(my_wnd, SW_SHOW);
 	UpdateWindow(my_wnd);
-	std::cout << "Overlay window displayed." << std::endl;
+	std::cout << _("Overlay window displayed.") << std::endl;
 }
 int main() {
+	SPOOF_FUNC
 	// hide_imports;
 	driver_start();
 	
 	if (!gui::init())
 	{
-		printf("The gui was not initialized!");
+		printf(_("The gui was not initialized!"));
 		Sleep(3000);
 		exit(0);
 	}

@@ -1,5 +1,5 @@
 #pragma once
-#include "lazyimporter.h"
+
 struct TArray
 {
 	uintptr_t Array;
