@@ -50,6 +50,7 @@ namespace cache
 		uint64_t PersistentLevel; //0xd8
 		uint64_t owninggameinstance;
 		TArray LocalPlayers;
+		uint64_t LocalPlayers2;
 		uint64_t localplayer;
 		uint64_t playerPawn;
 		uint64_t Playerstate;

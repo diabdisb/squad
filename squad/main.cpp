@@ -376,10 +376,11 @@ Vector3 GetBoneWithRotation(DWORD_PTR mesh, int id)
 
 
 
+static PrefixFilter filter = { {_("BP_Soldier")} };
 void cache_basic() {
 	SPOOF_FUNC
-	cache::gworld = d.read<uint64_t>(d.BaseAddress + OFFSET_GWORLD);
-	cache::PersistentLevel = d.read<uint64_t>(cache::gworld + 0x30); 
+		cache::gworld = d.read<uint64_t>(d.BaseAddress + OFFSET_GWORLD);
+	cache::PersistentLevel = d.read<uint64_t>(cache::gworld + 0x30);
 	cache::owninggameinstance = d.read<uint64_t>(cache::gworld + 0x180);
 	cache::LocalPlayers = d.readv<TArray>(cache::owninggameinstance + 0x38);
 	cache::localplayer = d.read<uint64_t>(cache::LocalPlayers.GetAddress());
@@ -389,12 +390,14 @@ void cache_basic() {
 	cache::localteamid = d.readv<int32_t>(cache::Playerstate + 0x400);
 	cache::Mesh = d.read<uint64_t>(cache::playerPawn + 0x288);
 	cache::player_camera_manager = d.read<uint64_t>(cache::PlayerController + 0x2C0);
-	
+
 
 
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(300));
 }
+
+
 auto DrawLine(const ImVec2& aPoint1, const ImVec2 aPoint2, ImU32 aColor, const FLOAT aLineWidth) -> VOID
 {
 	SPOOF_FUNC
@@ -453,6 +456,29 @@ void RenderPlayerInfo(Vector3 screenPosition, int distance, ImU32 color) {
 	}
 }
 
+
+void aimbot_ya_heard(uint64_t actorMesh)
+{
+	SPOOF_FUNC
+
+	float ScreenCenterX = GetSystemMetrics(SM_CXSCREEN) / 2;
+	float ScreenCenterY = GetSystemMetrics(SM_CYSCREEN) / 2;
+
+	Vector3 vHeadBone = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::head));
+
+	d.move_mouse(vHeadBone.x, vHeadBone.y, NULL);
+		
+
+
+
+
+
+
+
+}
+
+
+
 void DrawPlayerBones(uint64_t actorMesh, Vector3 headPos, Vector3 bonePos)
 {
 	SPOOF_FUNC
@@ -489,11 +515,11 @@ void DrawPlayerBones(uint64_t actorMesh, Vector3 headPos, Vector3 bonePos)
 	DrawLine(ImVec2(vLeftHandMiddle.x, vLeftHandMiddle.y), ImVec2(vUpperArmLeft.x, vUpperArmLeft.y), ImColor(255, 255, 255), 2);
 	DrawLine(ImVec2(vRightHandMiddle.x, vRightHandMiddle.y), ImVec2(vUpperArmRight.x, vUpperArmRight.y), ImColor(255, 255, 255), 2);
 }
-static PrefixFilter filter = { {_("BP_Soldier")} };
+
 void esp() {
 	SPOOF_FUNC
-	cache::Actors = d.readv<TArray>(cache::PersistentLevel + 0x98);
-	cache::Actors2 = d.readv<uint64_t>(cache::PersistentLevel + 0x98);	
+		cache::Actors = d.readv<TArray>(cache::PersistentLevel + 0x98);
+	cache::Actors2 = d.readv<uint64_t>(cache::PersistentLevel + 0x98);
 
 	for (int i = 0; i < cache::Actors.Size(); i++) {
 		auto CurrentActor = cache::Actors[i];
@@ -516,20 +542,24 @@ void esp() {
 
 			auto actor_health = d.readv<float>(actorPawn + 0x1df8);
 			//printf("actor_health %.3f" , actor_health);
-			
+
 
 			auto actorRootComponent = d.read<uint64_t>(CurrentActor + 0x138);
 			Vector3 actorWorldPos = d.readv<Vector3>(actorRootComponent + 0x11c);
-		//	auto isDead = d.readv<bool>(actorState + 0x1df4); // bIsDying : 1
+			//	auto isDead = d.readv<bool>(actorState + 0x1df4); // bIsDying : 1
 
+			if (cache::playerPawn == actorPawn) {
+				continue;
+
+			}
 			if (ignoreteam && actorid == cache::localteamid) {
 				continue;
 			}
-			
+
 			if (actor_health <= 0.0f) {
 				continue;
 			}
-			
+
 			if (WorldToScreenX(actorWorldPos, CameraCache.POV, Screen)) {
 				ImU32 color = IM_COL32(0, 255, 0, 255); // Green color
 
@@ -537,12 +567,14 @@ void esp() {
 				DrawPlayerBones(actorMesh, GetBoneWithRotation(actorMesh, bones2::head), bone_pos);
 
 				int entity_distance = player_WorldPos.Distance(bone_pos);
-				
+
 				RenderPlayerInfo(Screen, entity_distance, color);
 			}
 		}
 	}
 }
+
+
 
 
 //	printf("uworld %p\n", gworld);
@@ -636,7 +668,7 @@ WPARAM render_loop() {
 		ImGui::NewFrame();
 
 		esp(); // Call ESP function to draw player info and bones
-		cache_basic();
+	//	cache_basic();
 		render_menu(); // Call menu rendering function
 
 		// End ImGui frame
@@ -757,6 +789,7 @@ int main() {
 		Sleep(3000);
 		exit(0);
 	}
+	CreateThread(nullptr, NULL, reinterpret_cast<LPTHREAD_START_ROUTINE>(cache_basic), nullptr, NULL, nullptr);
 
 	create_overlay();
 	directx_init();
