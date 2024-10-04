@@ -4,6 +4,7 @@
 #include "include/imgui.h"
 #include "include/imgui_impl_dx9.h"
 #include "include/imgui_impl_win32.h"
+#include "include/imgui_internal.h"
 #include "hooks/imports.hpp"
 #include <d3dx9.h>
 #include "driver.h"
@@ -12,6 +13,7 @@
 #include <sstream>
 #include <thread>
 #include <mutex>
+#include <algorithm>
 using namespace std;
 
 
@@ -350,10 +352,7 @@ typedef struct _EntityList
 	Vector3 Ships_pos;
 	int Ships_id;
 }EntityList;
-std::vector<EntityList> entityAllList;
-std::vector<EntityList> entityList;
-std::vector<EntityList> entityBotList;
-std::vector<EntityList> entityShipsList;
+
 
 FTransform GetBoneIndex(DWORD_PTR mesh, int index)
 {
@@ -445,6 +444,47 @@ auto DrawOutlinedText(ImFont* pFont, const std::string& text, const ImVec2& pos,
 	ImGui::PopFont();
 }
 
+void DrawHealth(Vector3 screenPosition, int Health, ImU32 color, const FCameraCacheEntry& CameraCache, Vector3 headPos, Vector3 footPos) {
+#ifdef max
+#undef max
+#endif
+
+#ifdef min
+#undef min
+#endif
+	Vector3 cameraPosition = CameraCache.POV.Location;
+	float distance = (cameraPosition - headPos).Length();
+	ImVec2 headScreen = ImVec2(ProjectWorldToScreen(headPos).x, ProjectWorldToScreen(headPos).y);
+	ImVec2 footScreen = ImVec2(ProjectWorldToScreen(footPos).x, ProjectWorldToScreen(footPos).y);
+	float barHeight = std::abs(headScreen.y - footScreen.y);
+	float barWidth = 8.0f;
+	float padding = barWidth * 0.25f;
+	float borderThickness = 2.0f;
+	Health = std::max(0, std::min(Health, 100));
+	float healthPercent = Health / 100.0f;
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	ImVec2 barPos(screenPosition.x - barWidth - 12.0f, headScreen.y);
+	ImU32 backgroundColor = IM_COL32(30, 30, 30, 150);
+	ImU32 borderColor = IM_COL32(255, 255, 255, 180);
+	ImU32 gradientStartColor = IM_COL32(0, 180, 0, 255);
+	ImU32 gradientMiddleColor = IM_COL32(255, 200, 0, 255);
+	ImU32 gradientEndColor = IM_COL32(200, 0, 0, 255);
+	ImU32 currentColor = healthPercent > 0.5f ? ImLerp(gradientMiddleColor, gradientStartColor, (healthPercent - 0.5f) * 2)
+		: ImLerp(gradientEndColor, gradientMiddleColor, healthPercent * 2);
+	drawList->AddRectFilled(barPos, ImVec2(barPos.x + barWidth, barPos.y + barHeight), backgroundColor, 5.0f);
+	drawList->AddRectFilled(
+		ImVec2(barPos.x, barPos.y + barHeight * (1.0f - healthPercent)),
+		ImVec2(barPos.x + barWidth, barPos.y + barHeight),
+		currentColor, 5.0f);
+	drawList->AddRect(barPos, ImVec2(barPos.x + barWidth, barPos.y + barHeight), borderColor, 5.0f, 0, borderThickness);
+	std::string healthText = std::to_string(Health) + "%";
+	ImVec2 textSize = ImGui::CalcTextSize(healthText.c_str());
+	ImVec2 textPos(barPos.x + barWidth / 2 - textSize.x / 2, barPos.y - textSize.y - padding);
+	drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), healthText.c_str());
+	drawList->AddRectFilled(ImVec2(barPos.x + 2, barPos.y + 2), ImVec2(barPos.x + barWidth + 2, barPos.y + barHeight + 2), IM_COL32(0, 0, 0, 60), 5.0f);
+}
+
+
 void RenderPlayerInfo(Vector3 screenPosition, int distance, ImU32 color) {
 	// Render is dead status based on checkbox
 	SPOOF_FUNC
@@ -456,66 +496,372 @@ void RenderPlayerInfo(Vector3 screenPosition, int distance, ImU32 color) {
 	}
 }
 
-
-void aimbot_ya_heard(uint64_t actorMesh)
+void move_to(float x, float y)
 {
-	SPOOF_FUNC
+	float center_x = GetSystemMetrics(SM_CXSCREEN) / 2;
+	float center_y = GetSystemMetrics(SM_CYSCREEN) / 2;
 
-	float ScreenCenterX = GetSystemMetrics(SM_CXSCREEN) / 2;
-	float ScreenCenterY = GetSystemMetrics(SM_CYSCREEN) / 2;
+	float smooth = 5;
 
-	Vector3 vHeadBone = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::head));
+	float target_x = 0.f;
+	float target_y = 0.f;
 
-	d.move_mouse(vHeadBone.x, vHeadBone.y, NULL);
-		
+	if (x != 0.f)
+	{
+		if (x > center_x)
+		{
+			target_x = -(center_x - x);
+			target_x /= smooth;
+			if (target_x + center_x > center_x * 2.f) target_x = 0.f;
+		}
 
+		if (x < center_x)
+		{
+			target_x = x - center_x;
+			target_x /= smooth;
+			if (target_x + center_x < 0.f) target_x = 0.f;
+		}
+	}
 
+	if (y != 0.f)
+	{
+		if (y > center_y)
+		{
+			target_y = -(center_y - y);
+			target_y /= smooth;
+			if (target_y + center_y > center_y * 2.f) target_y = 0.f;
+		}
 
-
-
-
-
+		if (y < center_y)
+		{
+			target_y = y - center_y;
+			target_y /= smooth;
+			if (target_y + center_y < 0.f) target_y = 0.f;
+		}
+	}
+	d.move_mouse(target_x, target_y, NULL);
 }
-
-
-
-void DrawPlayerBones(uint64_t actorMesh, Vector3 headPos, Vector3 bonePos)
+auto  aimbot_ya_heard()
 {
-	SPOOF_FUNC
-	Vector3 vHeadBone = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::head));
-	Vector3 vHip = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::pelvis));
-	Vector3 vNeck = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::neck_01));
-	Vector3 vUpperArmLeft = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::upperarm_l));
-	Vector3 vUpperArmRight = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::upperarm_r));
-	Vector3 vLeftHand = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::hand_l));
-	Vector3 vRightHand = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::hand_r));
-	Vector3 vRightThigh = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::thigh_r));
-	Vector3 vLeftThigh = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::thigh_l));
-	Vector3 vRightCalf = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::calf_r));
-	Vector3 vLeftCalf = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::calf_l));
-	Vector3 vLeftFoot = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::foot_l));
-	Vector3 vRightFoot = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::foot_r));
-
-	Vector3 vLeftHandMiddle = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::ik_hand_l));
-	Vector3 vRightHandMiddle = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::ik_hand_r));
-
 	
-	DrawLine(ImVec2(vHeadBone.x, vHeadBone.y), ImVec2(vNeck.x, vNeck.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vHip.x, vHip.y), ImVec2(vNeck.x, vNeck.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vUpperArmLeft.x, vUpperArmLeft.y), ImVec2(vNeck.x, vNeck.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vUpperArmRight.x, vUpperArmRight.y), ImVec2(vNeck.x, vNeck.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vLeftHand.x, vLeftHand.y), ImVec2(vLeftHandMiddle.x, vLeftHandMiddle.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vRightHand.x, vRightHand.y), ImVec2(vRightHandMiddle.x, vRightHandMiddle.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vLeftThigh.x, vLeftThigh.y), ImVec2(vHip.x, vHip.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vRightThigh.x, vRightThigh.y), ImVec2(vHip.x, vHip.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vLeftCalf.x, vLeftCalf.y), ImVec2(vLeftThigh.x, vLeftThigh.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vRightCalf.x, vRightCalf.y), ImVec2(vRightThigh.x, vRightThigh.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vLeftFoot.x, vLeftFoot.y), ImVec2(vLeftCalf.x, vLeftCalf.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vRightFoot.x, vRightFoot.y), ImVec2(vRightCalf.x, vRightCalf.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vLeftHandMiddle.x, vLeftHandMiddle.y), ImVec2(vUpperArmLeft.x, vUpperArmLeft.y), ImColor(255, 255, 255), 2);
-	DrawLine(ImVec2(vRightHandMiddle.x, vRightHandMiddle.y), ImVec2(vUpperArmRight.x, vUpperArmRight.y), ImColor(255, 255, 255), 2);
+	{
+		while (true)
+		{
+			SPOOF_FUNC
+				for (int i = 0; i < cache::Actors.Size(); i++) {
+					auto CurrentActor = cache::Actors[i];
+					auto CameraCache = d.readv<FCameraCacheEntry>(cache::player_camera_manager + 0x1AF0);
+					auto trust = d.readv<FName>(CurrentActor + 0x18);
+					std::string brain = FNameToString(trust);
+
+					bool shouldRender = !filterEnabled || filter.Matches(brain);
+
+					if (shouldRender) {
+						Vector3 Screen;
+						auto actorPawn = d.read<uintptr_t>(cache::Actors2 + i * 0x8);
+						auto actorState = d.read<uint64_t>(actorPawn + 0x0248);
+						auto actorid = d.readv<int32_t>(actorState + 0x400);
+
+
+						auto actor_health = d.readv<float>(actorPawn + 0x1df8);
+						//printf("actor_health %.3f" , actor_health);
+
+
+
+						//	auto isDead = d.readv<bool>(actorState + 0x1df4); // bIsDying : 1
+
+						if (cache::playerPawn == actorPawn) {
+							continue;
+
+						}
+						if (ignoreteam && actorid == cache::localteamid) {
+							continue;
+						}
+
+
+						if (actor_health <= 0.0f) {
+							continue;
+						}
+						auto actorMesh = d.read<uint64_t>(actorPawn + 0x288);
+						if (!actorMesh) {
+							continue;
+						}
+						float ScreenCenterX = GetSystemMetrics(SM_CXSCREEN) / 2;
+						float ScreenCenterY = GetSystemMetrics(SM_CYSCREEN) / 2;
+
+						Vector3 vHeadBone = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::head));
+						if (GetAsyncKeyState(VK_RBUTTON) & 0x8000)
+							{
+								//move_to(vHeadBone.x, vHeadBone.y);
+						//	printf("VHeadbone = %.f %.f" ,vHeadBone.x , vHeadBone.y);
+						move_to(vHeadBone.x, vHeadBone.y);
+							}
+
+
+
+
+
+						std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+					}
+
+				}
+		}
+	}
 }
 
+
+
+
+
+void DrawPlayerBones(uint64_t actorMesh, Vector3 headPos, ImColor Color, const FCameraCacheEntry& CameraCache)
+{
+	Vector3 cameraPosition = CameraCache.POV.Location;
+	float distance = (cameraPosition - headPos).Length();
+	float minThickness = 0.5f;
+	float maxThickness = 3.0f;
+	float scalingFactor = 200.0f;
+	float thickness = std::clamp(maxThickness - (distance / scalingFactor), minThickness, maxThickness);
+
+	// Define main body bones using the 'bones' enum
+	Vector3 vHead = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_Head));
+	Vector3 vNeck = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_Neck));
+	Vector3 vPelvis = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_Pelvis));
+	Vector3 vSpine1 = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_Spine));
+	Vector3 vSpine2 = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_Spine1));
+	Vector3 vSpine3 = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_Spine2));
+
+	// Arm bones
+	Vector3 vClavicleLeft = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Clavicle));
+	Vector3 vUpperArmLeft = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_UpperArm));
+	Vector3 vForearmLeft = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Forearm));
+	Vector3 vHandLeft = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Hand));
+
+	Vector3 vClavicleRight = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Clavicle));
+	Vector3 vUpperArmRight = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_UpperArm));
+	Vector3 vForearmRight = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Forearm));
+	Vector3 vHandRight = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Hand));
+
+	// Leg bones
+	Vector3 vThighLeft = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Thigh));
+	Vector3 vCalfLeft = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Calf));
+	Vector3 vFootLeft = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Foot));
+
+	Vector3 vThighRight = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Thigh));
+	Vector3 vCalfRight = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Calf));
+	Vector3 vFootRight = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Foot));
+
+	// Finger bones for left hand
+	Vector3 vFinger0_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger0));
+	Vector3 vFinger01_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger01));
+	Vector3 vFinger02_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger02));
+
+	Vector3 vFinger1_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger1));
+	Vector3 vFinger11_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger11));
+	Vector3 vFinger12_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger12));
+
+	Vector3 vFinger2_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger2));
+	Vector3 vFinger21_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger21));
+	Vector3 vFinger22_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger22));
+
+	Vector3 vFinger3_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger3));
+	Vector3 vFinger31_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger31));
+	Vector3 vFinger32_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger32));
+
+	Vector3 vFinger4_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger4));
+	Vector3 vFinger41_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger41));
+	Vector3 vFinger42_L = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_L_Finger42));
+
+	// Finger bones for right hand
+	Vector3 vFinger0_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger0));
+	Vector3 vFinger01_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger01));
+	Vector3 vFinger02_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger02));
+
+	Vector3 vFinger1_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger1));
+	Vector3 vFinger11_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger11));
+	Vector3 vFinger12_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger12));
+
+	Vector3 vFinger2_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger2));
+	Vector3 vFinger21_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger21));
+	Vector3 vFinger22_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger22));
+
+	Vector3 vFinger3_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger3));
+	Vector3 vFinger31_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger31));
+	Vector3 vFinger32_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger32));
+
+	Vector3 vFinger4_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger4));
+	Vector3 vFinger41_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger41));
+	Vector3 vFinger42_R = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones::Bip01_R_Finger42));
+
+	// Draw central spine
+	DrawLine(ImVec2(vPelvis.x, vPelvis.y), ImVec2(vSpine1.x, vSpine1.y), Color, thickness);
+	DrawLine(ImVec2(vSpine1.x, vSpine1.y), ImVec2(vSpine2.x, vSpine2.y), Color, thickness);
+	DrawLine(ImVec2(vSpine2.x, vSpine2.y), ImVec2(vSpine3.x, vSpine3.y), Color, thickness);
+	DrawLine(ImVec2(vSpine3.x, vSpine3.y), ImVec2(vNeck.x, vNeck.y), Color, thickness);
+	DrawLine(ImVec2(vNeck.x, vNeck.y), ImVec2(vHead.x, vHead.y), Color, thickness);
+
+	// Draw arms and hands
+	DrawLine(ImVec2(vNeck.x, vNeck.y), ImVec2(vClavicleLeft.x, vClavicleLeft.y), Color, thickness);
+	DrawLine(ImVec2(vClavicleLeft.x, vClavicleLeft.y), ImVec2(vUpperArmLeft.x, vUpperArmLeft.y), Color, thickness);
+	DrawLine(ImVec2(vUpperArmLeft.x, vUpperArmLeft.y), ImVec2(vForearmLeft.x, vForearmLeft.y), Color, thickness);
+	DrawLine(ImVec2(vForearmLeft.x, vForearmLeft.y), ImVec2(vHandLeft.x, vHandLeft.y), Color, thickness);
+
+	DrawLine(ImVec2(vNeck.x, vNeck.y), ImVec2(vClavicleRight.x, vClavicleRight.y), Color, thickness);
+	DrawLine(ImVec2(vClavicleRight.x, vClavicleRight.y), ImVec2(vUpperArmRight.x, vUpperArmRight.y), Color, thickness);
+	DrawLine(ImVec2(vUpperArmRight.x, vUpperArmRight.y), ImVec2(vForearmRight.x, vForearmRight.y), Color, thickness);
+	DrawLine(ImVec2(vForearmRight.x, vForearmRight.y), ImVec2(vHandRight.x, vHandRight.y), Color, thickness);
+
+	// Draw fingers (left hand)
+	DrawLine(ImVec2(vHandLeft.x, vHandLeft.y), ImVec2(vFinger0_L.x, vFinger0_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger0_L.x, vFinger0_L.y), ImVec2(vFinger01_L.x, vFinger01_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger01_L.x, vFinger01_L.y), ImVec2(vFinger02_L.x, vFinger02_L.y), Color, thickness);
+
+	DrawLine(ImVec2(vHandLeft.x, vHandLeft.y), ImVec2(vFinger1_L.x, vFinger1_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger1_L.x, vFinger1_L.y), ImVec2(vFinger11_L.x, vFinger11_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger11_L.x, vFinger11_L.y), ImVec2(vFinger12_L.x, vFinger12_L.y), Color, thickness);
+
+	DrawLine(ImVec2(vHandLeft.x, vHandLeft.y), ImVec2(vFinger2_L.x, vFinger2_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger2_L.x, vFinger2_L.y), ImVec2(vFinger21_L.x, vFinger21_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger21_L.x, vFinger21_L.y), ImVec2(vFinger22_L.x, vFinger22_L.y), Color, thickness);
+
+	DrawLine(ImVec2(vHandLeft.x, vHandLeft.y), ImVec2(vFinger3_L.x, vFinger3_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger3_L.x, vFinger3_L.y), ImVec2(vFinger31_L.x, vFinger31_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger31_L.x, vFinger31_L.y), ImVec2(vFinger32_L.x, vFinger32_L.y), Color, thickness);
+
+	DrawLine(ImVec2(vHandLeft.x, vHandLeft.y), ImVec2(vFinger4_L.x, vFinger4_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger4_L.x, vFinger4_L.y), ImVec2(vFinger41_L.x, vFinger41_L.y), Color, thickness);
+	DrawLine(ImVec2(vFinger41_L.x, vFinger41_L.y), ImVec2(vFinger42_L.x, vFinger42_L.y), Color, thickness);
+
+	// Draw fingers (right hand)
+	DrawLine(ImVec2(vHandRight.x, vHandRight.y), ImVec2(vFinger0_R.x, vFinger0_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger0_R.x, vFinger0_R.y), ImVec2(vFinger01_R.x, vFinger01_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger01_R.x, vFinger01_R.y), ImVec2(vFinger02_R.x, vFinger02_R.y), Color, thickness);
+
+	DrawLine(ImVec2(vHandRight.x, vHandRight.y), ImVec2(vFinger1_R.x, vFinger1_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger1_R.x, vFinger1_R.y), ImVec2(vFinger11_R.x, vFinger11_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger11_R.x, vFinger11_R.y), ImVec2(vFinger12_R.x, vFinger12_R.y), Color, thickness);
+
+	DrawLine(ImVec2(vHandRight.x, vHandRight.y), ImVec2(vFinger2_R.x, vFinger2_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger2_R.x, vFinger2_R.y), ImVec2(vFinger21_R.x, vFinger21_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger21_R.x, vFinger21_R.y), ImVec2(vFinger22_R.x, vFinger22_R.y), Color, thickness);
+
+	DrawLine(ImVec2(vHandRight.x, vHandRight.y), ImVec2(vFinger3_R.x, vFinger3_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger3_R.x, vFinger3_R.y), ImVec2(vFinger31_R.x, vFinger31_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger31_R.x, vFinger31_R.y), ImVec2(vFinger32_R.x, vFinger32_R.y), Color, thickness);
+
+	DrawLine(ImVec2(vHandRight.x, vHandRight.y), ImVec2(vFinger4_R.x, vFinger4_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger4_R.x, vFinger4_R.y), ImVec2(vFinger41_R.x, vFinger41_R.y), Color, thickness);
+	DrawLine(ImVec2(vFinger41_R.x, vFinger41_R.y), ImVec2(vFinger42_R.x, vFinger42_R.y), Color, thickness);
+
+	// Draw legs
+	DrawLine(ImVec2(vPelvis.x, vPelvis.y), ImVec2(vThighLeft.x, vThighLeft.y), Color, thickness);
+	DrawLine(ImVec2(vThighLeft.x, vThighLeft.y), ImVec2(vCalfLeft.x, vCalfLeft.y), Color, thickness);
+	DrawLine(ImVec2(vCalfLeft.x, vCalfLeft.y), ImVec2(vFootLeft.x, vFootLeft.y), Color, thickness);
+
+	DrawLine(ImVec2(vPelvis.x, vPelvis.y), ImVec2(vThighRight.x, vThighRight.y), Color, thickness);
+	DrawLine(ImVec2(vThighRight.x, vThighRight.y), ImVec2(vCalfRight.x, vCalfRight.y), Color, thickness);
+	DrawLine(ImVec2(vCalfRight.x, vCalfRight.y), ImVec2(vFootRight.x, vFootRight.y), Color, thickness);
+}
+
+void DrawCorneredBox(float X, float Y, float W, float H, const ImU32& color, float thickness)
+{
+	auto vList = ImGui::GetForegroundDrawList();
+	ImU32 col;
+	if (boxRainbowMode)
+	{
+		static float hue = 0.0f;
+		hue += 0.00005f;
+		if (hue > 1.0f) hue = 0.0f;
+		float r, g, b;
+		ImGui::ColorConvertHSVtoRGB(hue, 1.0f, 1.0f, r, g, b);
+		col = IM_COL32((int)(r * 255), (int)(g * 255), (int)(b * 255), 255);
+	}
+	else
+	{
+		col = color;
+	}
+	float lineW = (W / 3);
+	float lineH = (H / 3);
+	vList->AddLine(ImVec2(X, Y), ImVec2(X, Y + lineH), col, thickness);
+	vList->AddLine(ImVec2(X, Y), ImVec2(X + lineW, Y), col, thickness);
+	vList->AddLine(ImVec2(X + W, Y), ImVec2(X + W - lineW, Y), col, thickness);
+	vList->AddLine(ImVec2(X + W, Y), ImVec2(X + W, Y + lineH), col, thickness);
+	vList->AddLine(ImVec2(X, Y + H), ImVec2(X + lineW, Y + H), col, thickness);
+	vList->AddLine(ImVec2(X, Y + H), ImVec2(X, Y + H - lineH), col, thickness);
+	vList->AddLine(ImVec2(X + W, Y + H), ImVec2(X + W - lineW, Y + H), col, thickness);
+	vList->AddLine(ImVec2(X + W, Y + H), ImVec2(X + W, Y + H - lineH), col, thickness);
+}
+void DrawHealth(float X, float Y, float W, float H, int Health, const ImU32& color) {
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	float barHeight = H;
+	float barWidth = 4.0f;
+	float padding = 4.0f;
+	Health = std::max(0, std::min(Health, 100));
+	float healthPercent = Health / 100.0f;
+	ImVec2 barPos(X - barWidth - padding, Y);
+	ImU32 backgroundColor = IM_COL32(30, 30, 30, 150);
+	ImU32 healthColor = ImLerp(IM_COL32(200, 0, 0, 255), IM_COL32(0, 255, 0, 255), healthPercent);
+	drawList->AddRectFilled(barPos, ImVec2(barPos.x + barWidth, barPos.y + barHeight), backgroundColor, 5.0f);
+	drawList->AddRectFilled(
+		ImVec2(barPos.x, barPos.y + barHeight * (1.0f - healthPercent)),
+		ImVec2(barPos.x + barWidth, barPos.y + barHeight),
+		healthColor, 5.0f);
+	drawList->AddLine(ImVec2(barPos.x, barPos.y), ImVec2(barPos.x, barPos.y + barHeight), IM_COL32(255, 255, 255, 180), 0.5f);
+	drawList->AddLine(ImVec2(barPos.x + barWidth, barPos.y), ImVec2(barPos.x + barWidth, barPos.y + barHeight), IM_COL32(255, 255, 255, 180), 0.5f);
+	drawList->AddLine(ImVec2(barPos.x, barPos.y), ImVec2(barPos.x + barWidth, barPos.y), IM_COL32(255, 255, 255, 180), 0.5f);
+	drawList->AddLine(ImVec2(barPos.x, barPos.y + barHeight), ImVec2(barPos.x + barWidth, barPos.y + barHeight), IM_COL32(255, 255, 255, 180), 0.5f);
+	std::string healthText = std::to_string(Health) + "%";
+	ImVec2 textSize = ImGui::CalcTextSize(healthText.c_str());
+	ImVec2 textPos(barPos.x + barWidth / 2 - textSize.x / 2, barPos.y - textSize.y - padding);
+	drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), healthText.c_str());
+}
+
+void DrawFOVCircle(ImDrawList* drawList, ImVec2 screenCenter, float aimbotFov, ImU32 color)
+{
+	// Number of segments for the jagged look (less segments = more jagged)
+	int numSegments = 15; // Adjust this number for more or less jaggedness
+
+	// Draw the jagged circle with reduced segments
+	drawList->AddCircle(
+		screenCenter,    // Center of the circle
+		aimbotFov,       // Radius of the circle (FOV size)
+		color,           // Color of the circle (RGBA format)
+		numSegments,     // Lower number of segments for jagged look
+		2.0f             // Thickness of the circle's line
+	);
+}
+ImVec2 GetScreenResolution()
+{
+	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+	return ImVec2(static_cast<float>(screenWidth), static_cast<float>(screenHeight));
+}
+void DrawBox(float X, float Y, float W, float H, const ImU32& color, float thickness) {
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	drawList->AddRect(ImVec2(X, Y), ImVec2(X + W, Y + H), color, 0.0f, 0, thickness);
+}
+void RenderDistanceText(Vector3 actorWorldPos, Vector3 cameraPosition, bool displayDistance, ImVec2 TopBox, ImVec2 BottomBox, float CornerWidth)
+{
+	Vector3 distanceVec = actorWorldPos - cameraPosition;
+	float distance = sqrtf(distanceVec.x * distanceVec.x + distanceVec.y * distanceVec.y + distanceVec.z * distanceVec.z);
+	distance = distance / 100.0f;
+	std::string distanceText = "[" + std::to_string(static_cast<int>(distance)) + "m]";
+	float boxCenterX = TopBox.x - (CornerWidth / 2);
+	ImVec2 textPosition(boxCenterX + (CornerWidth / 2), BottomBox.y + 5);
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	ImVec2 textSize = ImGui::CalcTextSize(distanceText.c_str());
+	textPosition.x -= textSize.x / 2;
+	ImU32 textColor;
+	if (distance < 20.0f)
+		textColor = IM_COL32(0, 255, 0, 255);
+	else if (distance >= 20.0f && distance < 50.0f)
+		textColor = IM_COL32(0, 200, 0, 255);
+	else if (distance >= 50.0f && distance < 150.0f)
+		textColor = IM_COL32(255, 255, 0, 255);
+	else
+		textColor = IM_COL32(255, 0, 0, 255);
+	drawList->AddText(textPosition, textColor, distanceText.c_str());
+}
 void esp() {
 	SPOOF_FUNC
 		cache::Actors = d.readv<TArray>(cache::PersistentLevel + 0x98);
@@ -536,9 +882,7 @@ void esp() {
 			auto actorPawn = d.read<uintptr_t>(cache::Actors2 + i * 0x8);
 			auto actorState = d.read<uint64_t>(actorPawn + 0x0248);
 			auto actorid = d.readv<int32_t>(actorState + 0x400);
-			auto actorMesh = d.read<uint64_t>(actorPawn + 0x288);
-
-			auto bone_pos = GetBoneWithRotation(actorMesh, 0);
+		
 
 			auto actor_health = d.readv<float>(actorPawn + 0x1df8);
 			//printf("actor_health %.3f" , actor_health);
@@ -556,19 +900,77 @@ void esp() {
 				continue;
 			}
 
+		
 			if (actor_health <= 0.0f) {
 				continue;
 			}
+			auto actorMesh = d.read<uint64_t>(actorPawn + 0x288);
+			if (!actorMesh) {
+				continue;
+			}
+
+			auto bone_pos = GetBoneWithRotation(actorMesh, 0);
 
 			if (WorldToScreenX(actorWorldPos, CameraCache.POV, Screen)) {
-				ImU32 color = IM_COL32(0, 255, 0, 255); // Green color
 
-				// Call 
-				DrawPlayerBones(actorMesh, GetBoneWithRotation(actorMesh, bones2::head), bone_pos);
+				ImU32 color = IM_COL32(255, 255, 255, 255); // Green color
+				auto BottomBox = ProjectWorldToScreen(bone_pos);
+				auto TopBox = ProjectWorldToScreen(Vector3(GetBoneWithRotation(actorMesh, bones2::head).x, GetBoneWithRotation(actorMesh, bones2::head).y, GetBoneWithRotation(actorMesh, bones2::head).z + 15));
+				auto CornerHeight = abs(TopBox.y - BottomBox.y);
+				auto CornerWidth = CornerHeight * 0.65;
+				if (displayCorneredBox)
+				{
+					DrawCorneredBox(TopBox.x - (CornerWidth / 2), TopBox.y, CornerWidth, CornerHeight, ImColor(255, 255, 255), 1.5);
+				}
+				if (displayBones)
+				{
+					DrawPlayerBones(actorMesh, GetBoneWithRotation(actorMesh, bones2::head), ImColor(255, 255, 255), CameraCache);
+				}
+				if (displayHealth)
+				{
+					DrawHealth(TopBox.x - (CornerWidth / 2), TopBox.y, CornerWidth, CornerHeight, actor_health, color);
+				}
+				if (displayHeadDot)
+				{
+					ImDrawList* drawList = ImGui::GetForegroundDrawList();
+					ImVec2 headPos = ImVec2(TopBox.x, TopBox.y);
+					drawList->AddCircleFilled(headPos, 3.0f, IM_COL32(255, 255, 255, 255));
+				}
+				if (displayDistance)
+				{
+					ImVec2 TopBox2D = ImVec2(TopBox.x, TopBox.y);
+					ImVec2 BottomBox2D = ImVec2(BottomBox.x, BottomBox.y);
 
-				int entity_distance = player_WorldPos.Distance(bone_pos);
+					RenderDistanceText(actorWorldPos, CameraCache.POV.Location, displayDistance, TopBox2D, BottomBox2D, CornerWidth);
+				}
 
-				RenderPlayerInfo(Screen, entity_distance, color);
+				if (displayBox)
+				{
+					DrawBox(TopBox.x - (CornerWidth / 2), TopBox.y, CornerWidth, CornerHeight, color, 1.5f);
+				}
+				if (drawAimbotFovCircle)
+				{
+					ImVec2 screenResolution = GetScreenResolution();
+					ImVec2 screenCenter = ImVec2(screenResolution.x / 2.0f, screenResolution.y / 2.0f);
+					ImDrawList* drawList = ImGui::GetForegroundDrawList();
+					DrawFOVCircle(drawList, screenCenter, aimbotFov, IM_COL32(255, 255, 255, 255));  // Red color with full opacity
+				}
+				if (displaySnaplines)
+				{
+					// Use the background draw list to render snaplines behind other UI elements
+					ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+
+					// You can also dynamically get screen dimensions or use fixed values like before
+					float screenWidth = GetSystemMetrics(SM_CXSCREEN);
+					float screenHeight = GetSystemMetrics(SM_CYSCREEN);
+
+					// Set the starting point of the snapline to be slightly lower than the bottom of the screen.
+					ImVec2 screenBottomCenter = ImVec2(screenWidth / 2, screenHeight + 30);  // Adjust as needed
+
+					// Draw the snapline from the bottom of the screen to the bottom of the box
+					drawList->AddLine(screenBottomCenter, ImVec2(BottomBox.x, BottomBox.y), IM_COL32(255, 255, 255, 255), 1.0f);
+				}
+
 			}
 		}
 	}
@@ -587,34 +989,135 @@ void esp() {
 	//printf("localplayer %p\n", localplayer);
 	//printf("playercontroller %p\n", PlayerController);
 	//printf("camera cache %.3f\n", CameraCache.POV.FOV);
+struct Snowflake {
+	ImVec2 position;  // Position of the snowflake (x, y)
+	float speed;      // Falling speed of the snowflake
+	float size;       // Size of the snowflake
+};
 
+// Snowflake properties
+std::vector<Snowflake> snowflakes;
+bool initialized = false;  // To check if snowflakes have been initialized
+const int maxSnowflakes = 100;  // Maximum number of snowflakes
 
 
 void render_menu()
 {
-	SPOOF_FUNC
+	// Toggle menu visibility with the Insert key
 	if (GetAsyncKeyState(VK_INSERT) & 1) {
 		menuopen = !menuopen;
 
 		if (menuopen) {
 			SetWindowLong(my_wnd, GWL_EXSTYLE, WS_EX_LAYERED | WS_EX_TOOLWINDOW);
+
+			// Initialize snowflakes if the menu is opened and they haven't been initialized
+			if (!initialized) {
+				srand(static_cast<unsigned int>(time(0)));  // Seed the random number generator
+				snowflakes.clear();  // Clear any existing snowflakes
+
+				// Create random snowflakes
+				for (int i = 0; i < maxSnowflakes; ++i) {
+					Snowflake flake;
+					flake.position = ImVec2(rand() % 1920, rand() % 1080);  // Random start position within a 1080p screen
+					flake.speed = 1.0f + static_cast<float>(rand() % 100) / 100.0f;  // Random speed between 1.0 and 2.0
+					flake.size = 3.0f + static_cast<float>(rand() % 100) / 50.0f;     // Random size between 3.0 and 5.0
+					snowflakes.push_back(flake);
+				}
+				initialized = true;  // Mark snowflakes as initialized
+			}
 		}
 		else {
 			SetWindowLong(my_wnd, GWL_EXSTYLE, WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW);
-			
 		}
 	}
 
+	// Render the menu if it's open
+	if (menuopen)
+	{
+		// Render a semi-transparent overlay for dimming the background
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		drawList->AddRectFilled(ImVec2(0, 0), ImVec2(1920, 1080), IM_COL32(0, 0, 0, 150));  // Black overlay with 150 alpha
 
-	if (menuopen) {
-		ImGui::SetNextWindowSize({ 620, 350 });
-		ImGui::Begin(_("Squad"), nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
-		ImGui::Text(_("Hello, World!"));
-		ImGui::Checkbox("Enable Filter", &filterEnabled);
-		ImGui::Checkbox("Show Is Dead", &displayIsDead);
-		ImGui::Checkbox("Show Distance", &displayDistance); 
-		ImGui::Checkbox("Filter Team", &ignoreteam);
-		ImGui::End();
+		// Set menu window size and attributes
+		ImGui::SetNextWindowSize(ImVec2(620, 450));  // Adjusted height for new sections
+
+		// Create the main menu window with "Squad" as its title
+		ImGui::Begin(_("Squad"), nullptr, ImGuiWindowFlags_NoResize);
+
+		ImGui::Spacing();
+
+		// General Settings Section
+		if (ImGui::CollapsingHeader(_("General Settings"), ImGuiTreeNodeFlags_CollapsingHeader))
+		{
+			ImGui::Text(_("General SETTINGS:"));
+			ImGui::Checkbox(_("Enable Filter"), &filterEnabled);
+			ImGui::Checkbox(_("Filter Team"), &ignoreteam);
+		}
+
+		// Visual Settings Section
+		if (ImGui::CollapsingHeader(_("Visual Settings"), ImGuiTreeNodeFlags_CollapsingHeader))
+		{
+			ImGui::Text(_("Visual SETTINGS:"));
+			ImGui::Checkbox(_("Show Cornered Box"), &displayCorneredBox);
+			if (displayCorneredBox)
+			{
+				ImGui::Checkbox(_("Box Rainbow Mode"), &boxRainbowMode);
+			}
+			ImGui::Checkbox(_("Show Bones"), &displayBones);
+			ImGui::Checkbox(_("Show Health"), &displayHealth);
+			ImGui::Checkbox(_("Show Distance"), &displayDistance);
+			ImGui::Checkbox(_("Show Snaplines"), &displaySnaplines);
+			ImGui::Checkbox(_("Show Box"), &displayBox);
+			ImGui::Checkbox(_("Show Head Dot"), &displayHeadDot);
+		}
+
+		// Aimbot Settings Section
+		if (ImGui::CollapsingHeader(_("Aimbot Settings"), ImGuiTreeNodeFlags_CollapsingHeader))
+		{
+			ImGui::Text(_("Aimbot SETTINGS:"));
+			ImGui::Checkbox(_("Enable Aimbot"), &enableAimbot);
+			// aimbot fov size slider
+// aimbot smothness slider
+// select target bone
+			ImGui::Checkbox("Draw Aimbot FOV Circle", &drawAimbotFovCircle);
+		}
+
+		ImGui::Spacing();
+		ImGui::Separator();
+
+		// Get the window size and set cursor position for bottom-left alignment
+		ImVec2 windowSize = ImGui::GetWindowSize();
+		ImVec2 cursorPos = ImGui::GetCursorPos();
+
+		// Calculate new cursor position at bottom-left
+		float textHeight = ImGui::GetTextLineHeightWithSpacing(); // Get height of one line of text
+		ImGui::SetCursorPos(ImVec2(10, windowSize.y - textHeight * 1.2));  // Adjust this value to fine-tune position
+
+		ImGui::Text("Press 'Insert' to toggle menu visibility.");
+
+		ImGui::End();  // End the main menu window
+	}
+
+	// Render the snowfall effect when the menu is open
+	if (menuopen)
+	{
+		// Get the draw list to draw directly on the screen
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		for (auto& flake : snowflakes) {
+			// Draw each snowflake as a circle with its size and position
+			drawList->AddCircleFilled(flake.position, flake.size, IM_COL32(255, 255, 255, 200));  // Semi-transparent white
+
+			// Move the snowflake down by its speed
+			flake.position.y += flake.speed;
+
+			// Reset the snowflake to the top if it goes out of bounds
+			if (flake.position.y > 1080.0f) {  // Assuming a 1080p screen resolution
+				flake.position.y = 0.0f;
+				flake.position.x = rand() % 1920;  // Random x position within screen width
+				flake.speed = 1.0f + static_cast<float>(rand() % 100) / 100.0f;  // Random speed between 1.0 and 2.0
+				flake.size = 3.0f + static_cast<float>(rand() % 100) / 50.0f;     // Random size between 3.0 and 5.0
+			}
+		}
 	}
 }
 
@@ -789,8 +1292,10 @@ int main() {
 		Sleep(3000);
 		exit(0);
 	}
-	CreateThread(nullptr, NULL, reinterpret_cast<LPTHREAD_START_ROUTINE>(cache_basic), nullptr, NULL, nullptr);
 
+	
+	CreateThread(nullptr, NULL, reinterpret_cast<LPTHREAD_START_ROUTINE>(cache_basic), nullptr, NULL, nullptr);
+	CreateThread(nullptr, NULL, reinterpret_cast<LPTHREAD_START_ROUTINE>(aimbot_ya_heard), nullptr, NULL, nullptr);
 	create_overlay();
 	directx_init();
 	render_loop();

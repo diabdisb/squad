@@ -38,10 +38,24 @@ struct TArray
 		return Array;
 	}
 };
+float aimbotFov = 100.0f;  // Initial FOV value
+float aimbotSmoothness = 1.0f;
+std::vector<std::string> boneOptions = { "Head", "Neck", "Spine", "Pelvis", "Left Arm", "Right Arm", "Left Leg", "Right Leg" };
+int selectedBoneIndex = 0;  // Store the selected bone index (default is 0, "Head")
+bool enableAimbot = false;
+bool drawAimbotFovCircle = false;
+bool drawClosestTarget = true;
 bool ignoreteam = true;
 bool ignoredead = true;
-bool displayIsDead = true;  // Toggle for displaying "is dead"
-bool displayDistance = true; // Toggle for displaying distance
+bool boxRainbowMode = false;
+bool displayCorneredBox = true;
+bool displayBones = true;
+bool displayHealth = true;
+bool displayDistance = true;
+bool displaySnaplines = false;
+bool displayBox = false;
+bool displayHeadDot = true;
+
 namespace cache
 {
 
