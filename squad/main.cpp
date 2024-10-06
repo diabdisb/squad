@@ -8,12 +8,14 @@
 #include "hooks/imports.hpp"
 #include <d3dx9.h>
 #include "driver.h"
+#include <iomanip>
 #include <thread>
 #include "structs.h"
 #include <sstream>
 #include <thread>
 #include <mutex>
 #include <algorithm>
+#include <bitset>
 using namespace std;
 
 
@@ -111,6 +113,18 @@ constexpr auto OFFSET_APPENDSTRING = 0x21a1760;
 constexpr auto OFFSET_GNAMES = 0x7192f40;
 constexpr auto OFFSET_GWORLD = 0x7313ca0;
 
+
+//niggers
+constexpr auto OFFSET_CustomTimeDilation = 0x098; //AActor - CustomTimeDilation
+constexpr auto OFFSET_DisplayName = 0x270; //ASQEquipableItem -> AActor - DisplayName
+
+
+
+
+
+
+
+
 std::string FNameToString(FName& fname)
 {
 	enum { NAME_SIZE = 1024 };
@@ -129,9 +143,10 @@ std::string FNameToString(FName& fname)
 	return finalName.empty() ? "null" : finalName;
 }
 
+
 void driver_start() {
 	SPOOF_FUNC
-	d._processid = d.getprocessid(_(L"SquadGame.exe"));
+		d._processid = d.getprocessid(_(L"SquadGame.exe"));
 	d.initdriver(d._processid);
 	d.BaseAddress = d.get_base_address();
 	printf("baseAddress %p\n", d.BaseAddress);
@@ -151,6 +166,14 @@ struct PrefixFilter {
 		return false;
 	}
 };
+
+
+ImVec2 GetScreenResolution()
+{
+	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+	return ImVec2(static_cast<float>(screenWidth), static_cast<float>(screenHeight));
+}
 inline bool filterEnabled = true;
 auto draw_line(int x1, int y1, int x2, int y2, ImU32 color) -> void {
 	// Snap the points to a grid
@@ -168,7 +191,7 @@ auto draw_line(int x1, int y1, int x2, int y2, ImU32 color) -> void {
 	ImGui::GetForegroundDrawList()->AddLine(point1, point2, color);
 }
 enum bones : int {
-//	Root = 0,
+	//	Root = 0,
 	Bip01 = 1,
 	Bip01_Pelvis = 2,
 	Bip01_Spine = 3,
@@ -330,6 +353,10 @@ enum bones2
 	ik_hand_l = 116,
 	ik_hand_r = 89,
 };
+
+bones targetBone = bones::Bip01_Head;
+
+
 typedef struct _EntityList
 {
 	uintptr_t actor_pawn;
@@ -367,7 +394,7 @@ Vector3 GetBoneWithRotation(DWORD_PTR mesh, int id)
 	FTransform bone = GetBoneIndex(mesh, id);
 	FTransform ComponentToWorld = d.readv<FTransform>(mesh + 0x1c0);
 	//auto ComponentToWorld2 = d.readv<uint64_t>(mesh + 0x0158);
-	
+
 	D3DMATRIX Matrix;
 	Matrix = MatrixMultiplication(bone.ToMatrixWithScale(), ComponentToWorld.ToMatrixWithScale());
 	return Vector3(Matrix._41, Matrix._42, Matrix._43);
@@ -400,12 +427,12 @@ void cache_basic() {
 auto DrawLine(const ImVec2& aPoint1, const ImVec2 aPoint2, ImU32 aColor, const FLOAT aLineWidth) -> VOID
 {
 	SPOOF_FUNC
-	ImGui::GetForegroundDrawList()->AddLine(aPoint1, aPoint2, aColor, aLineWidth);
+		ImGui::GetForegroundDrawList()->AddLine(aPoint1, aPoint2, aColor, aLineWidth);
 }
 auto DrawBox(float x, float y, float w, float h, ImColor color) -> VOID
 {
 	SPOOF_FUNC
-	DrawLine(ImVec2(x, y), ImVec2(x + w, y), color, 1.3f); // top 
+		DrawLine(ImVec2(x, y), ImVec2(x + w, y), color, 1.3f); // top 
 	DrawLine(ImVec2(x, y - 1.3f), ImVec2(x, y + h + 1.4f), color, 1.3f); // left
 	DrawLine(ImVec2(x + w, y - 1.3f), ImVec2(x + w, y + h + 1.4f), color, 1.3f);  // right
 	DrawLine(ImVec2(x, y + h), ImVec2(x + w, y + h), color, 1.3f);   // bottom 
@@ -414,7 +441,7 @@ ImFont* Verdana, * DefaultFont;
 auto DrawOutlinedText(ImFont* pFont, const std::string& text, const ImVec2& pos, float size, ImU32 color, bool center) -> VOID
 {
 	SPOOF_FUNC
-	ImGui::PushFont(Verdana);
+		ImGui::PushFont(Verdana);
 	std::stringstream stream(text);
 	std::string line;
 
@@ -489,19 +516,23 @@ void RenderPlayerInfo(Vector3 screenPosition, int distance, ImU32 color) {
 	// Render is dead status based on checkbox
 	SPOOF_FUNC
 
-	// Render distance based on checkbox
-	if (displayDistance) {
-		std::string distanceText = _("Distance: [") + std::to_string(distance) + _("]");
-		ImGui::GetForegroundDrawList()->AddText(ImVec2(screenPosition.x, screenPosition.y + 5), color, distanceText.c_str());
-	}
+		// Render distance based on checkbox
+		if (displayDistance) {
+			std::string distanceText = _("Distance: [") + std::to_string(distance) + _("]");
+			ImGui::GetForegroundDrawList()->AddText(ImVec2(screenPosition.x, screenPosition.y + 5), color, distanceText.c_str());
+		}
 }
+
+ImVec2 screenResolution = GetScreenResolution();
+
+ImVec2 screenCenter = ImVec2(screenResolution.x / 2.0f, screenResolution.y / 2.0f);
+
 
 void move_to(float x, float y)
 {
 	float center_x = GetSystemMetrics(SM_CXSCREEN) / 2;
 	float center_y = GetSystemMetrics(SM_CYSCREEN) / 2;
 
-	float smooth = 5;
 
 	float target_x = 0.f;
 	float target_y = 0.f;
@@ -511,14 +542,14 @@ void move_to(float x, float y)
 		if (x > center_x)
 		{
 			target_x = -(center_x - x);
-			target_x /= smooth;
+			target_x /= aimbotSmoothness;
 			if (target_x + center_x > center_x * 2.f) target_x = 0.f;
 		}
 
 		if (x < center_x)
 		{
 			target_x = x - center_x;
-			target_x /= smooth;
+			target_x /= aimbotSmoothness;
 			if (target_x + center_x < 0.f) target_x = 0.f;
 		}
 	}
@@ -528,88 +559,171 @@ void move_to(float x, float y)
 		if (y > center_y)
 		{
 			target_y = -(center_y - y);
-			target_y /= smooth;
+			target_y /= aimbotSmoothness;
 			if (target_y + center_y > center_y * 2.f) target_y = 0.f;
 		}
 
 		if (y < center_y)
 		{
 			target_y = y - center_y;
-			target_y /= smooth;
+			target_y /= aimbotSmoothness;
 			if (target_y + center_y < 0.f) target_y = 0.f;
 		}
 	}
 	d.move_mouse(target_x, target_y, NULL);
 }
-auto  aimbot_ya_heard()
+float GetDistance(ImVec2 point1, ImVec2 point2)
 {
-	
+	return sqrt(pow(point1.x - point2.x, 2) + pow(point1.y - point2.y, 2));
+}
+
+uintptr_t lockedTarget = 0;   // Store the currently locked target actor
+bool isLockedOn = false;
+
+float CalculateDistance(Vector3 actorWorldPos, Vector3 cameraPosition)
+{
+	Vector3 distanceVec = actorWorldPos - cameraPosition;
+	return sqrtf(distanceVec.x * distanceVec.x + distanceVec.y * distanceVec.y + distanceVec.z * distanceVec.z);
+}
+
+
+
+auto aimbot_ya_heard()
+{
+	while (true)
 	{
-		while (true)
+		SPOOF_FUNC
+
+			// Check if RMB is pressed to activate the aimbot
+			bool isAimbotActive = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) && enableAimbot;
+
+		if (isAimbotActive && !isLockedOn)  // If RMB is pressed but no target is locked
 		{
-			SPOOF_FUNC
-				for (int i = 0; i < cache::Actors.Size(); i++) {
-					auto CurrentActor = cache::Actors[i];
-					auto CameraCache = d.readv<FCameraCacheEntry>(cache::player_camera_manager + 0x1AF0);
-					auto trust = d.readv<FName>(CurrentActor + 0x18);
-					std::string brain = FNameToString(trust);
+			uintptr_t closestTarget = 0;
+			float minDistance = FLT_MAX; // Initialize with maximum possible value
 
-					bool shouldRender = !filterEnabled || filter.Matches(brain);
+			for (int i = 0; i < cache::Actors.Size(); i++)
+			{
+				auto CurrentActor = cache::Actors[i];
+				auto CameraCache = d.readv<FCameraCacheEntry>(cache::player_camera_manager + 0x1AF0);
+				auto trust = d.readv<FName>(CurrentActor + 0x18);
+				std::string brain = FNameToString(trust);
 
-					if (shouldRender) {
-						Vector3 Screen;
-						auto actorPawn = d.read<uintptr_t>(cache::Actors2 + i * 0x8);
-						auto actorState = d.read<uint64_t>(actorPawn + 0x0248);
-						auto actorid = d.readv<int32_t>(actorState + 0x400);
+				bool shouldRender = !filterEnabled || filter.Matches(brain);
 
+				if (shouldRender)
+				{
 
-						auto actor_health = d.readv<float>(actorPawn + 0x1df8);
-						//printf("actor_health %.3f" , actor_health);
-
-
-
-						//	auto isDead = d.readv<bool>(actorState + 0x1df4); // bIsDying : 1
-
-						if (cache::playerPawn == actorPawn) {
-							continue;
-
-						}
-						if (ignoreteam && actorid == cache::localteamid) {
-							continue;
-						}
-
-
-						if (actor_health <= 0.0f) {
-							continue;
-						}
-						auto actorMesh = d.read<uint64_t>(actorPawn + 0x288);
-						if (!actorMesh) {
-							continue;
-						}
-						float ScreenCenterX = GetSystemMetrics(SM_CXSCREEN) / 2;
-						float ScreenCenterY = GetSystemMetrics(SM_CYSCREEN) / 2;
-
-						Vector3 vHeadBone = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::head));
-						if (GetAsyncKeyState(VK_RBUTTON) & 0x8000)
-							{
-								//move_to(vHeadBone.x, vHeadBone.y);
-						//	printf("VHeadbone = %.f %.f" ,vHeadBone.x , vHeadBone.y);
-						move_to(vHeadBone.x, vHeadBone.y);
-							}
-
-
-
-
-
-						std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
+					auto actorPawn = d.read<uintptr_t>(cache::Actors2 + i * 0x8);
+					auto actorState = d.read<uint64_t>(actorPawn + 0x0248);
+					auto actorid = d.readv<int32_t>(actorState + 0x400);
+					auto actor_health = d.readv<float>(actorPawn + 0x1df8);
+					auto actorRootComponent = d.read<uint64_t>(CurrentActor + 0x138);
+					Vector3 actorWorldPos = d.readv<Vector3>(actorRootComponent + 0x11c);
+					if (cache::playerPawn == actorPawn || actor_health <= 0.0f) {
+						continue;
 					}
 
+					if (ignoreteam && actorid == cache::localteamid) {
+						continue;
+					}
+
+					auto actorMesh = d.read<uint64_t>(actorPawn + 0x288);
+					if (!actorMesh) {
+						continue;
+					}
+
+					// Get the actor's head position in world space and project it to screen space
+					Vector3 vHeadBone = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, bones2::head));
+
+					// Calculate distance between head bone position and screen center (FOV check)
+					ImVec2 headBoneScreenPos(vHeadBone.x, vHeadBone.y);
+					float distanceToCenter = GetDistance(headBoneScreenPos, screenCenter);
+
+					// Get 3D distance between camera and actor for prioritizing closest target
+					float worldDistance = CalculateDistance(actorWorldPos, CameraCache.POV.Location);
+
+					// If the target is within FOV and is closer than the current closest target, lock onto it
+					if (distanceToCenter <= aimbotFov && worldDistance < minDistance)
+					{
+						closestTarget = actorPawn;
+						minDistance = worldDistance;
+					}
 				}
+			}
+
+			// Lock onto the closest target found
+			if (closestTarget != 0)
+			{
+				lockedTarget = closestTarget;
+				isLockedOn = true;
+			}
 		}
+		else if (isLockedOn)  // If a target is already locked
+		{
+			// Read the actorMesh again for the locked target
+			auto actorMesh = d.read<uint64_t>(lockedTarget + 0x288);
+			if (!actorMesh) {
+				isLockedOn = false;  // If target is invalid, unlock
+				continue;
+			}
+
+			auto actor_health = d.readv<float>(lockedTarget + 0x1df8);
+			if (actor_health <= 0.0f) {
+				isLockedOn = false;  // Unlock if target is dead
+				continue;
+			}
+
+			// Get the head bone position in screen space for the locked target
+			Vector3 vTargetBonePos = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, targetBone));
+			move_to(vTargetBonePos.x, vTargetBonePos.y);  // Move to the locked target's head position
+
+			// Unlock target if RMB is released
+			if (!(GetAsyncKeyState(VK_RBUTTON) & 0x8000))
+			{
+				isLockedOn = false;
+				lockedTarget = 0;
+			}
+		}
+
+		// Small delay to avoid excessive CPU usage
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
 }
 
+
+
+
+void DrawChams(uint64_t actorMesh, ImColor Color, const FCameraCacheEntry& CameraCache)
+{
+	// Define main bones for visualization
+	const std::vector<int> mainBones = {
+		bones::Bip01_Head, bones::Bip01_Neck, bones::Bip01_Spine, bones::Bip01_Spine1, bones::Bip01_Spine2,
+		bones::Bip01_R_UpperArm, bones::Bip01_R_Forearm, bones::Bip01_R_Hand,
+		bones::Bip01_L_UpperArm, bones::Bip01_L_Forearm, bones::Bip01_L_Hand,
+		bones::Bip01_R_Thigh, bones::Bip01_R_Calf, bones::Bip01_R_Foot,
+		bones::Bip01_L_Thigh, bones::Bip01_L_Calf, bones::Bip01_L_Foot
+	};
+
+	// Calculate distance and thickness
+	Vector3 cameraPosition = CameraCache.POV.Location;
+	Vector3 headPos = GetBoneWithRotation(actorMesh, bones::Bip01_Head);
+	float distance = (cameraPosition - headPos).Length();
+	float minThickness = 2.0f;
+	float maxThickness = 6.0f;
+	float scalingFactor = 500.0f;
+	float thickness = std::clamp(maxThickness - (distance / scalingFactor), minThickness, maxThickness);
+
+	// Draw bones with the specified color and thickness
+	for (size_t i = 1; i < mainBones.size(); i++)
+	{
+		Vector3 startPos = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, mainBones[i - 1]));
+		Vector3 endPos = ProjectWorldToScreen(GetBoneWithRotation(actorMesh, mainBones[i]));
+
+		// Draw the line between bones to form a chams-like effect
+		DrawLine(ImVec2(startPos.x, startPos.y), ImVec2(endPos.x, endPos.y), Color, thickness);
+	}
+}
 
 
 
@@ -819,7 +933,7 @@ void DrawHealth(float X, float Y, float W, float H, int Health, const ImU32& col
 void DrawFOVCircle(ImDrawList* drawList, ImVec2 screenCenter, float aimbotFov, ImU32 color)
 {
 	// Number of segments for the jagged look (less segments = more jagged)
-	int numSegments = 15; // Adjust this number for more or less jaggedness
+	int numSegments = 80; // Adjust this number for more or less jaggedness
 
 	// Draw the jagged circle with reduced segments
 	drawList->AddCircle(
@@ -830,16 +944,75 @@ void DrawFOVCircle(ImDrawList* drawList, ImVec2 screenCenter, float aimbotFov, I
 		2.0f             // Thickness of the circle's line
 	);
 }
-ImVec2 GetScreenResolution()
-{
-	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
-	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-	return ImVec2(static_cast<float>(screenWidth), static_cast<float>(screenHeight));
-}
+
+
+struct InitialWeaponData {
+	bool bInfiniteAmmo;   // 0x0000 - 1 byte
+	bool bInfiniteMags;   // 0x0001 - 1 byte
+};
+
+
+DWORD offset_last_submit_time = 0x2b4; // AServerStatReplicator -> NumRelevantDeletedActors
+DWORD offset_last_render_time = 0x2bc; // AServerStatReplicator -> NumReplicatedActors
+
+
+
 void DrawBox(float X, float Y, float W, float H, const ImU32& color, float thickness) {
 	ImDrawList* drawList = ImGui::GetForegroundDrawList();
 	drawList->AddRect(ImVec2(X, Y), ImVec2(X + W, Y + H), color, 0.0f, 0, thickness);
 }
+
+Vector3 calculate_new_rotation(Vector3& zaz, Vector3& daz)
+{
+	Vector3 dalte = zaz - daz;
+	Vector3 ongle;
+	float hpm = sqrtf(dalte.x * dalte.x + dalte.y * dalte.y);
+	ongle.y = atan(dalte.y / dalte.x) * 57.295779513082f;
+	ongle.x = (atan(dalte.z / hpm) * 57.295779513082f) * -1.f;
+
+	if (dalte.x >= 0.f) ongle.y += 180.f;
+
+	return ongle;
+}
+
+void silent_aim(uintptr_t target_mesh)
+{
+	Vector3 vHead = ProjectWorldToScreen(GetBoneWithRotation(target_mesh, bones::Bip01_Head));
+
+	auto CameraCache = d.readv<FCameraCacheEntry>(cache::player_camera_manager + 0x1AF0);
+	uintptr_t view_yaw_min = 0x27FC;
+	uintptr_t view_yaw_max = 0x2800;
+	uintptr_t aim_pitch_min = 0x27F4;
+	uintptr_t aim_pitch_max = 0x27F8;
+	if (vHead.x != 0 || vHead.y != 0)
+	{
+		Vector3 new_rotation = calculate_new_rotation(CameraCache.POV.Location, vHead);
+		static float og_pitch_min = d.read<float>(cache::player_camera_manager + view_yaw_min);
+		static float og_pitch_max = d.read<float>(cache::player_camera_manager + view_yaw_max);
+
+		d.write<float>(d.read(cache::playerPawn + 0x150) + aim_pitch_min, new_rotation.x);
+		d.write<float>(d.read(cache::playerPawn + 0x150) + aim_pitch_max, new_rotation.x);
+
+		d.write<float>(cache::player_camera_manager + view_yaw_min, new_rotation.y);
+		d.write<float>(cache::player_camera_manager + view_yaw_max, new_rotation.y);
+
+		Sleep(5);
+
+		d.write<float>(cache::player_camera_manager + view_yaw_min, og_pitch_min);
+		d.write<float>(cache::player_camera_manager + view_yaw_max, og_pitch_max);
+	}
+}
+
+
+
+bool is_visible(uintptr_t mesh)
+{
+	float last_sumbit_time = d.readv<float>(mesh + offset_last_submit_time);
+	float last_render_time_on_screen = d.readv<float>(mesh + offset_last_render_time);
+
+	return last_render_time_on_screen + 0.06f >= last_sumbit_time;
+}
+
 void RenderDistanceText(Vector3 actorWorldPos, Vector3 cameraPosition, bool displayDistance, ImVec2 TopBox, ImVec2 BottomBox, float CornerWidth)
 {
 	Vector3 distanceVec = actorWorldPos - cameraPosition;
@@ -862,10 +1035,71 @@ void RenderDistanceText(Vector3 actorWorldPos, Vector3 cameraPosition, bool disp
 		textColor = IM_COL32(255, 0, 0, 255);
 	drawList->AddText(textPosition, textColor, distanceText.c_str());
 }
+
+
+void ReadInitialWeaponData(uintptr_t baseAddress) {
+	// Create a variable to hold the initial part of the structure
+	InitialWeaponData initialData = {};
+
+	// Calculate the address of the WeaponConfig starting point (assuming baseAddress is the correct pointer)
+	uintptr_t weaponConfigAddress = baseAddress + 0x0620;
+
+	// Read the initial 2 bytes from the structure into the InitialWeaponData variable
+	if (d.readvm(weaponConfigAddress, reinterpret_cast<uintptr_t>(&initialData), sizeof(InitialWeaponData))) {
+		std::cout << "Successfully read initial WeaponConfig data!" << std::endl;
+		std::cout << "bInfiniteAmmo: " << (initialData.bInfiniteAmmo ? "True" : "False") << std::endl;
+		std::cout << "bInfiniteMags: " << (initialData.bInfiniteMags ? "True" : "False") << std::endl;
+	}
+	else {
+		std::cout << "Failed to read initial WeaponConfig data from memory!" << std::endl;
+	}
+}
+
+
+void ReadBitfields(uintptr_t baseAddress) {
+	// Calculate the address of the bitfield
+	uintptr_t bitfieldAddress = baseAddress + 0x1760;
+
+	// Read the entire byte that contains the bitfields
+	uint8_t bitfieldValue = d.read<uint8_t>(bitfieldAddress);
+
+	// Print the raw byte value in binary form for visualization
+	std::cout << "Bitfield raw value (binary): " << std::bitset<8>(bitfieldValue) << std::endl;
+
+	// Read each bit by masking with the appropriate bit position
+	bool bStopADSWhenSprintPressed = bitfieldValue & (1 << 0);
+	bool bStopADSWhenPronePressed = bitfieldValue & (1 << 1);
+	bool bStopADSWhenUnpronePressed = bitfieldValue & (1 << 2);
+	bool bStopSprintWhenADSPressed = bitfieldValue & (1 << 3);
+	bool bStopUsingPrimaryItemWhenPronePressed = bitfieldValue & (1 << 4);
+	bool bStopUsingAltItemWhenPronePressed = bitfieldValue & (1 << 5);
+	bool bStopUsingPrimaryItemWhenUnpronePressed = bitfieldValue & (1 << 6);
+	bool bStopUsingAltItemWhenUnpronePressed = bitfieldValue & (1 << 7);
+
+	// Print the values of each bitfield
+	std::cout << "bStopADSWhenSprintPressed: " << (bStopADSWhenSprintPressed ? "True" : "False") << std::endl;
+	std::cout << "bStopADSWhenPronePressed: " << (bStopADSWhenPronePressed ? "True" : "False") << std::endl;
+	std::cout << "bStopADSWhenUnpronePressed: " << (bStopADSWhenUnpronePressed ? "True" : "False") << std::endl;
+	std::cout << "bStopSprintWhenADSPressed: " << (bStopSprintWhenADSPressed ? "True" : "False") << std::endl;
+	std::cout << "bStopUsingPrimaryItemWhenPronePressed: " << (bStopUsingPrimaryItemWhenPronePressed ? "True" : "False") << std::endl;
+	std::cout << "bStopUsingAltItemWhenPronePressed: " << (bStopUsingAltItemWhenPronePressed ? "True" : "False") << std::endl;
+	std::cout << "bStopUsingPrimaryItemWhenUnpronePressed: " << (bStopUsingPrimaryItemWhenUnpronePressed ? "True" : "False") << std::endl;
+	std::cout << "bStopUsingAltItemWhenUnpronePressed: " << (bStopUsingAltItemWhenUnpronePressed ? "True" : "False") << std::endl;
+}
+
+
 void esp() {
 	SPOOF_FUNC
 		cache::Actors = d.readv<TArray>(cache::PersistentLevel + 0x98);
 	cache::Actors2 = d.readv<uint64_t>(cache::PersistentLevel + 0x98);
+
+	if (drawAimbotFovCircle)
+	{
+		ImVec2 screenResolution = GetScreenResolution();
+		ImVec2 screenCenter = ImVec2(screenResolution.x / 2.0f, screenResolution.y / 2.0f);
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		DrawFOVCircle(drawList, screenCenter, aimbotFov, IM_COL32(255, 255, 255, 70));  // Red color with full opacity
+	}
 
 	for (int i = 0; i < cache::Actors.Size(); i++) {
 		auto CurrentActor = cache::Actors[i];
@@ -882,13 +1116,15 @@ void esp() {
 			auto actorPawn = d.read<uintptr_t>(cache::Actors2 + i * 0x8);
 			auto actorState = d.read<uint64_t>(actorPawn + 0x0248);
 			auto actorid = d.readv<int32_t>(actorState + 0x400);
-		
+
 
 			auto actor_health = d.readv<float>(actorPawn + 0x1df8);
 			//printf("actor_health %.3f" , actor_health);
 
 
 			auto actorRootComponent = d.read<uint64_t>(CurrentActor + 0x138);
+			DWORD actorWorldPoxds = d.readv<DWORD>(actorRootComponent + 0x11c);
+
 			Vector3 actorWorldPos = d.readv<Vector3>(actorRootComponent + 0x11c);
 			//	auto isDead = d.readv<bool>(actorState + 0x1df4); // bIsDying : 1
 
@@ -900,7 +1136,9 @@ void esp() {
 				continue;
 			}
 
-		
+
+
+
 			if (actor_health <= 0.0f) {
 				continue;
 			}
@@ -908,9 +1146,7 @@ void esp() {
 			if (!actorMesh) {
 				continue;
 			}
-
 			auto bone_pos = GetBoneWithRotation(actorMesh, 0);
-
 			if (WorldToScreenX(actorWorldPos, CameraCache.POV, Screen)) {
 
 				ImU32 color = IM_COL32(255, 255, 255, 255); // Green color
@@ -943,31 +1179,24 @@ void esp() {
 
 					RenderDistanceText(actorWorldPos, CameraCache.POV.Location, displayDistance, TopBox2D, BottomBox2D, CornerWidth);
 				}
-
+				if (enableSpeedHack)
+				{
+					d.write<float>(cache::playerPawn + OFFSET_CustomTimeDilation, 5.f);
+				}
+				else
+				{
+					d.write<float>(cache::playerPawn + OFFSET_CustomTimeDilation, 1.f);
+				}
 				if (displayBox)
 				{
 					DrawBox(TopBox.x - (CornerWidth / 2), TopBox.y, CornerWidth, CornerHeight, color, 1.5f);
 				}
-				if (drawAimbotFovCircle)
-				{
-					ImVec2 screenResolution = GetScreenResolution();
-					ImVec2 screenCenter = ImVec2(screenResolution.x / 2.0f, screenResolution.y / 2.0f);
-					ImDrawList* drawList = ImGui::GetForegroundDrawList();
-					DrawFOVCircle(drawList, screenCenter, aimbotFov, IM_COL32(255, 255, 255, 255));  // Red color with full opacity
-				}
 				if (displaySnaplines)
 				{
-					// Use the background draw list to render snaplines behind other UI elements
 					ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-
-					// You can also dynamically get screen dimensions or use fixed values like before
 					float screenWidth = GetSystemMetrics(SM_CXSCREEN);
 					float screenHeight = GetSystemMetrics(SM_CYSCREEN);
-
-					// Set the starting point of the snapline to be slightly lower than the bottom of the screen.
-					ImVec2 screenBottomCenter = ImVec2(screenWidth / 2, screenHeight + 30);  // Adjust as needed
-
-					// Draw the snapline from the bottom of the screen to the bottom of the box
+					ImVec2 screenBottomCenter = ImVec2(screenWidth / 2, screenHeight + 30);
 					drawList->AddLine(screenBottomCenter, ImVec2(BottomBox.x, BottomBox.y), IM_COL32(255, 255, 255, 255), 1.0f);
 				}
 
@@ -999,6 +1228,7 @@ struct Snowflake {
 std::vector<Snowflake> snowflakes;
 bool initialized = false;  // To check if snowflakes have been initialized
 const int maxSnowflakes = 100;  // Maximum number of snowflakes
+
 
 
 void render_menu()
@@ -1039,7 +1269,7 @@ void render_menu()
 		drawList->AddRectFilled(ImVec2(0, 0), ImVec2(1920, 1080), IM_COL32(0, 0, 0, 150));  // Black overlay with 150 alpha
 
 		// Set menu window size and attributes
-		ImGui::SetNextWindowSize(ImVec2(620, 450));  // Adjusted height for new sections
+		ImGui::SetNextWindowSize(ImVec2(620, 500));  // Adjusted height for new sections
 
 		// Create the main menu window with "Squad" as its title
 		ImGui::Begin(_("Squad"), nullptr, ImGuiWindowFlags_NoResize);
@@ -1076,10 +1306,40 @@ void render_menu()
 		{
 			ImGui::Text(_("Aimbot SETTINGS:"));
 			ImGui::Checkbox(_("Enable Aimbot"), &enableAimbot);
-			// aimbot fov size slider
-// aimbot smothness slider
-// select target bone
 			ImGui::Checkbox("Draw Aimbot FOV Circle", &drawAimbotFovCircle);
+			ImGui::InputFloat("Enable Aimbot FOV", &aimbotFov, 10.0f, 10.0f, "%.1f");
+			ImGui::InputFloat("Enable Aimbot Smothness", &aimbotSmoothness, 1.0f, 10.0f, " % .1f");
+			ImGui::Text("Target Bone:");
+			if (ImGui::RadioButton("Head", selectedBoneIndex == 0)) selectedBoneIndex = 0;
+			if (ImGui::RadioButton("Neck", selectedBoneIndex == 1)) selectedBoneIndex = 1;
+			if (ImGui::RadioButton("Chest", selectedBoneIndex == 2)) selectedBoneIndex = 2;
+			if (ImGui::RadioButton("Pelvis", selectedBoneIndex == 3)) selectedBoneIndex = 3;
+			if (ImGui::RadioButton("Left Hand", selectedBoneIndex == 4)) selectedBoneIndex = 4;
+			if (ImGui::RadioButton("Right Hand", selectedBoneIndex == 5)) selectedBoneIndex = 5;
+			if (ImGui::RadioButton("Left Foot", selectedBoneIndex == 6)) selectedBoneIndex = 6;
+			if (ImGui::RadioButton("Right Foot", selectedBoneIndex == 7)) selectedBoneIndex = 7;
+
+			// Update the target bone based on the selected index
+			switch (selectedBoneIndex)
+			{
+			case 0: targetBone = bones::Bip01_Head; break;         // Head bone
+			case 1: targetBone = bones::Bip01_Neck; break;         // Neck bone
+			case 2: targetBone = bones::Bip01_Spine2; break;       // Chest bone (using Spine2)
+			case 3: targetBone = bones::Bip01_Pelvis; break;       // Pelvis bone
+			case 4: targetBone = bones::Bip01_L_Hand; break;       // Left hand
+			case 5: targetBone = bones::Bip01_R_Hand; break;       // Right hand
+			case 6: targetBone = bones::Bip01_L_Foot; break;       // Left foot
+			case 7: targetBone = bones::Bip01_R_Foot; break;       // Right foot
+			default: targetBone = bones::Bip01_Head; break;        // Default to head if none selected
+			}
+		}
+
+		if (ImGui::CollapsingHeader(_("Miscellaneous Settings"), ImGuiTreeNodeFlags_CollapsingHeader))
+		{
+			ImGui::Text(_("Miscellaneous SETTINGS:"));
+			ImGui::Checkbox(_("Enable SpeedHack"), &enableSpeedHack);
+			ImGui::Checkbox(_("Enable Infinite Stamina"), &enableInfiniteStamina);
+
 		}
 
 		ImGui::Spacing();
@@ -1131,7 +1391,7 @@ void render_menu()
 
 WPARAM render_loop() {
 	SPOOF_FUNC
-	ZeroMemory(&messager, sizeof(MSG));
+		ZeroMemory(&messager, sizeof(MSG));
 	std::cout << _("Starting render loop...") << std::endl;
 
 	while (messager.message != WM_QUIT) {
@@ -1171,7 +1431,7 @@ WPARAM render_loop() {
 		ImGui::NewFrame();
 
 		esp(); // Call ESP function to draw player info and bones
-	//	cache_basic();
+		//	cache_basic();
 		render_menu(); // Call menu rendering function
 
 		// End ImGui frame
@@ -1222,8 +1482,8 @@ WPARAM render_loop() {
 void create_overlay()
 {
 	SPOOF_FUNC
-	// Debug logging
-	std::cout << _("Creating overlay window...") << std::endl;
+		// Debug logging
+		std::cout << _("Creating overlay window...") << std::endl;
 
 	WNDCLASSEXA wcex = {
 		sizeof(WNDCLASSEXA),
@@ -1265,7 +1525,7 @@ void create_overlay()
 	std::cout << _("Overlay window created successfully.") << std::endl;
 
 	// Set window styles
-	
+
 	SetLayeredWindowAttributes(my_wnd, RGB(0, 0, 0), 255, LWA_ALPHA);
 
 	MARGINS margin = { -1 };
@@ -1283,9 +1543,9 @@ void create_overlay()
 }
 int main() {
 	SPOOF_FUNC
-	// hide_imports;
-	driver_start();
-	
+		// hide_imports;
+		driver_start();
+
 	if (!gui::init())
 	{
 		printf(_("The gui was not initialized!"));
@@ -1293,11 +1553,10 @@ int main() {
 		exit(0);
 	}
 
-	
+
 	CreateThread(nullptr, NULL, reinterpret_cast<LPTHREAD_START_ROUTINE>(cache_basic), nullptr, NULL, nullptr);
 	CreateThread(nullptr, NULL, reinterpret_cast<LPTHREAD_START_ROUTINE>(aimbot_ya_heard), nullptr, NULL, nullptr);
 	create_overlay();
 	directx_init();
 	render_loop();
 }
-	
